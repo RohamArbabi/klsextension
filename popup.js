@@ -1,69 +1,32 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize chat
-    const chatBox = document.getElementById('chat-box');
-    const userInput = document.getElementById('user-input');
-    const sendButton = document.getElementById('send-button');
+    const resultsDiv = document.getElementById('results');
     const scanButton = document.getElementById('scan-page');
     const checkButton = document.getElementById('check-content');
-    const conductText = document.getElementById('conduct-text');
 
-    // Load saved code of conduct
-    chrome.storage.local.get(['codeOfConduct'], function(result) {
-        if (result.codeOfConduct) {
-            conductText.value = result.codeOfConduct;
-        }
-    });
+    // Local code of conduct
+    const CODE_OF_CONDUCT = `1. No hate speech or discrimination
+2. No illegal activities
+3. No explicit sexual content
+4. No harassment or bullying
+5. No promotion of violence
+6. No misinformation or fake news
+7. No unauthorized sharing of personal information`;
 
-    // Save code of conduct when changed
-    conductText.addEventListener('input', function() {
-        chrome.storage.local.set({ codeOfConduct: conductText.value });
-    });
-
-    // Send message to background script
-    sendButton.addEventListener('click', sendMessage);
-    userInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
-    });
-
-    function sendMessage() {
-        const message = userInput.value.trim();
-        if (message) {
-            addMessage('user', message);
-            userInput.value = '';
-            
-            // Send message to background script
-            chrome.runtime.sendMessage({
-                type: 'chat',
-                message: message,
-                codeOfConduct: conductText.value
-            }, function(response) {
-                if (response && response.message) {
-                    addMessage('ai', response.message);
-                }
-            });
-        }
-    }
-
-    // Add message to chat box
-    function addMessage(sender, message) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${sender}-message`;
-        messageDiv.textContent = message;
-        chatBox.appendChild(messageDiv);
-        chatBox.scrollTop = chatBox.scrollHeight;
+    // Update results display
+    function updateResults(message, type = 'default') {
+        resultsDiv.innerHTML = `<p class="${type}">${message}</p>`;
     }
 
     // Scan current page
     scanButton.addEventListener('click', function() {
         chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
             chrome.tabs.sendMessage(tabs[0].id, {
-                type: 'scan',
-                codeOfConduct: conductText.value
+                type: 'scan'
             }, function(response) {
                 if (response && response.results) {
-                    addMessage('ai', 'Scan results: ' + response.results);
+                    updateResults(response.results);
+                } else if (response && response.error) {
+                    updateResults(response.error, 'error');
                 }
             });
         });
@@ -75,11 +38,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (content) {
             chrome.runtime.sendMessage({
                 type: 'check',
-                content: content,
-                codeOfConduct: conductText.value
+                content: content
             }, function(response) {
                 if (response && response.assessment) {
-                    addMessage('ai', 'Content assessment: ' + response.assessment);
+                    updateResults(response.assessment);
+                } else if (response && response.error) {
+                    updateResults(response.error, 'error');
                 }
             });
         }

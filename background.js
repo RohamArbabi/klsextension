@@ -1,21 +1,31 @@
-// Replace with your actual OpenAI API key
-const API_KEY = 'YOUR_API_KEY_HERE';
+// Load environment variables
+const API_KEY = process.env.OPENAI_API_KEY;
 const API_URL = 'https://api.openai.com/v1/chat/completions';
+
+// Check if API key is set
+if (!API_KEY) {
+    throw new Error('OPENAI_API_KEY environment variable is not set');
+}
+
+// Local code of conduct
+const CODE_OF_CONDUCT = `1. No hate speech or discrimination
+2. No illegal activities
+3. No explicit sexual content
+4. No harassment or bullying
+5. No promotion of violence
+6. No misinformation or fake news
+7. No unauthorized sharing of personal information`;
 
 // Handle messages from popup and content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     try {
         switch (request.type) {
-            case 'chat':
-                const response = generateChatResponse(request.message, request.codeOfConduct);
-                response.then(result => sendResponse({ message: result })).catch(error => sendResponse({ error: error.message }));
-                break;
             case 'check':
-                const assessment = checkContentAgainstConduct(request.content, request.codeOfConduct);
+                const assessment = checkContentAgainstConduct(request.content);
                 assessment.then(result => sendResponse({ assessment: result })).catch(error => sendResponse({ error: error.message }));
                 break;
             case 'scan':
-                const scanResult = scanPageContent(request.codeOfConduct, request.content);
+                const scanResult = scanPageContent();
                 scanResult.then(result => sendResponse({ results: result })).catch(error => sendResponse({ error: error.message }));
                 break;
         }
@@ -26,14 +36,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
 });
 
-// Generate chat response
-async function generateChatResponse(message, codeOfConduct) {
-    const prompt = `You are a content conduct checker. 
-    Code of Conduct:
-    ${codeOfConduct}
-    
-    User: ${message}
-    Assistant:`;
+// Check content against code of conduct
+async function checkContentAgainstConduct(content) {
+    const prompt = `You are a strict content conduct checker. Analyze the following content against our code of conduct and provide a clear assessment:
+
+Content: ${content}
+
+Code of Conduct:
+${CODE_OF_CONDUCT}
+
+Please respond with:
+- A clear assessment ("Pass" or "Fail")
+- Specific violations if any
+- A brief explanation of why it passed or failed
+
+Respond in this format:
+Assessment: [Pass/Fail]
+Violations: [List of violations if any]
+Explanation: [Brief explanation]`;
 
     try {
         const response = await fetch(API_URL, {
@@ -45,8 +65,8 @@ async function generateChatResponse(message, codeOfConduct) {
             body: JSON.stringify({
                 model: "gpt-3.5-turbo",
                 messages: [{ role: "user", content: prompt }],
-                temperature: 0.7,
-                max_tokens: 200
+                temperature: 0.2,
+                max_tokens: 300
             })
         });
 

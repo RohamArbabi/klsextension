@@ -9,8 +9,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Send content to background script for analysis
                 chrome.runtime.sendMessage({
                     type: 'scan',
-                    content: textContent,
-                    codeOfConduct: request.codeOfConduct
+                    content: textContent
                 }, function(response) {
                     sendResponse(response);
                 });
