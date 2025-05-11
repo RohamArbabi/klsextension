@@ -1,5 +1,10 @@
 # Environment files
 .env
+.env.production
+config.js
+*.pem
+*.key
+secrets.json
 
 # Node.js
 node_modules/

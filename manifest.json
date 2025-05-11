@@ -1,15 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "Content Conduct Checker",
+  "name": "What Would Khandor Do?",
   "version": "1.0",
-  "description": "LLM-powered content scanning and chat extension to check website content against code of conduct",
+  "description": "Chrome extension to help students verify if their actions and messages align with Khan Lab School's Behavioral Intervention Framework",
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
-    "https://api.openai.com/*"
+    "<all_urls>"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -20,12 +21,14 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
   ]
 }
