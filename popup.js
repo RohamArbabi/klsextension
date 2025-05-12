@@ -5,10 +5,20 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Hide the analysis panel by default - the user shouldn't see this
     document.getElementById('analysis-panel').style.display = 'none';
+    
+    // Auto-scanning is now always enabled, no toggle needed
     // API configuration loaded from external config file
     // The API_CONFIG variable is defined in config.js
     const OPENAI_API_KEY = API_CONFIG.OPENAI_API_KEY;
     const OPENAI_ENDPOINT = API_CONFIG.OPENAI_ENDPOINT;
+    
+    // Store API key in chrome.storage for background service worker
+    chrome.storage.local.set({
+        apiKey: OPENAI_API_KEY,
+        apiEndpoint: OPENAI_ENDPOINT
+    }, function() {
+        console.log('API configuration saved to storage');
+    });
     
     // Extension state
     const state = {
@@ -122,6 +132,63 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateStatus(text, isError = false) {
         statusIndicator.textContent = text;
         statusIndicator.style.color = isError ? '#d32f2f' : '#666';
+    }
+    
+    /**
+     * Show info about auto-scanning in the header
+     */
+    function addAutoScanInfo() {
+        // Create info container
+        const infoContainer = document.createElement('div');
+        infoContainer.className = 'auto-scan-info';
+        infoContainer.style.cssText = `
+            padding: 8px;
+            margin-top: 10px;
+            background-color: #f0f8ff;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 12px;
+            color: #4682B4;
+        `;
+        
+        infoContainer.innerHTML = '<strong>Active Monitoring:</strong> Text fields are automatically scanned for behavioral concerns';
+        
+        // Find header and append info
+        const header = document.querySelector('.header');
+        header.appendChild(infoContainer);
+    }
+    
+    /**
+     * Update auto-scan setting in content script
+     */
+    async function updateAutoScanSetting(enabled) {
+        try {
+            // Get active tab
+            const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+            if (!tab) {
+                console.error('No active tab found');
+                return;
+            }
+            
+            // Send message to content script
+            chrome.tabs.sendMessage(tab.id, {
+                type: 'toggle_auto_scan',
+                enabled: enabled
+            }, response => {
+                if (chrome.runtime.lastError) {
+                    console.error('Error updating auto-scan setting:', chrome.runtime.lastError);
+                    return;
+                }
+                
+                console.log('Auto-scan setting updated:', response);
+                
+                // Show brief status update
+                const statusText = enabled ? 'Auto-scanning enabled' : 'Auto-scanning disabled';
+                updateStatus(statusText);
+            });
+        } catch (error) {
+            console.error('Error in updateAutoScanSetting:', error);
+        }
     }
     
     // Analysis panel is completely disabled to avoid showing too much information

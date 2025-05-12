@@ -7,7 +7,11 @@ if (typeof window.klsBehavioralAdvisor === 'undefined') {
             apiKey: null,
             apiEndpoint: null,
             isInitialized: false,
-            chatHistory: []
+            chatHistory: [],
+            textBoxMonitors: new Map(),  // Track text boxes we're monitoring
+            scanDebounceTimer: null,  // Debounce timer for scanning
+            lastScannedText: '',  // Track last scanned text to avoid duplicates
+            scanInProgress: false  // Flag to prevent concurrent scans
         };
         
         /**
@@ -218,6 +222,320 @@ Include an analysis in JSON format at the end (which will be removed before show
             }
         }
 
+        /**
+         * Analyze text for behavioral violations
+         * @param {string} text - The text to analyze
+         * @param {boolean} isAutoScan - Whether this is an automatic scan (vs. manual input)
+         * @returns {Promise<object>} Analysis result
+         */
+        async function analyzeText(text, isAutoScan = false) {
+            if (!text || text.trim().length < 1) {
+                return null; // Only skip completely empty texts
+            }
+            
+            if (text === state.lastScannedText && isAutoScan) {
+                return null; // Skip duplicate scans for the same text
+            }
+            
+            state.lastScannedText = text;
+            
+            try {
+                const result = await processMessage(text, false);
+                
+                // Display warnings for any concerning content - including low level concerns
+                if (result && result.analysis && 
+                    (result.analysis.concernLevel === 'high' || 
+                     result.analysis.concernLevel === 'medium' ||
+                     result.analysis.concernLevel === 'low')) {
+                    return result;
+                }
+                
+                return null; // No concerns found
+            } catch (error) {
+                console.error('Error analyzing text:', error);
+                return null;
+            }
+        }
+        
+        /**
+         * Creates and shows a warning popup
+         * @param {object} analysis - The analysis result
+         * @param {string} text - The original text that was analyzed
+         */
+        function showWarningPopup(analysis, text) {
+            if (!analysis || !analysis.analysis) return;
+            
+            // Remove any existing popups
+            const existingPopup = document.getElementById('kls-warning-popup');
+            if (existingPopup) {
+                document.body.removeChild(existingPopup);
+            }
+            
+            // Create popup container
+            const popup = document.createElement('div');
+            popup.id = 'kls-warning-popup';
+            popup.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                width: 350px;
+                background: white;
+                border-left: 5px solid #d32f2f;
+                border-radius: 4px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                z-index: 9999;
+                font-family: 'Segoe UI', Tahoma, sans-serif;
+                animation: kls-slide-in 0.3s ease-out;
+            `;
+            
+            // Add animation style
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes kls-slide-in {
+                    from { transform: translateX(400px); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+                @keyframes kls-fade-out {
+                    from { opacity: 1; }
+                    to { opacity: 0; }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // Header
+            const header = document.createElement('div');
+            header.style.cssText = `
+                background: #ffebee;
+                padding: 12px 15px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 1px solid #ffcdd2;
+            `;
+            
+            const title = document.createElement('h3');
+            title.textContent = '⚠️ Behavioral Warning';
+            title.style.cssText = `
+                margin: 0;
+                font-size: 16px;
+                color: #d32f2f;
+            `;
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                background: none;
+                border: none;
+                font-size: 20px;
+                cursor: pointer;
+                color: #666;
+            `;
+            closeBtn.onclick = () => {
+                popup.style.animation = 'kls-fade-out 0.3s';
+                setTimeout(() => {
+                    if (popup.parentNode) {
+                        document.body.removeChild(popup);
+                    }
+                }, 280);
+            };
+            
+            header.appendChild(title);
+            header.appendChild(closeBtn);
+            
+            // Content
+            const content = document.createElement('div');
+            content.style.padding = '15px';
+            
+            // Concern level badge
+            const concernLevel = analysis.analysis.concernLevel || 'medium';
+            const levelColors = {
+                high: '#d32f2f',
+                medium: '#ff9800',
+                low: '#4caf50',
+                none: '#757575'
+            };
+            
+            const levelBadge = document.createElement('div');
+            levelBadge.style.cssText = `
+                display: inline-block;
+                padding: 3px 10px;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: bold;
+                color: white;
+                background-color: ${levelColors[concernLevel] || levelColors.medium};
+                margin-bottom: 10px;
+            `;
+            levelBadge.textContent = `${concernLevel.toUpperCase()} CONCERN`;
+            
+            // Violated norm
+            const norm = document.createElement('div');
+            norm.style.cssText = `
+                margin-bottom: 15px;
+                font-size: 14px;
+            `;
+            
+            // Get behavior category from analysis
+            const behaviorCategory = analysis.analysis.behaviorCategory || 'Unknown behavior';
+            norm.innerHTML = `<strong>Handbook Violation:</strong> ${behaviorCategory}`;
+            
+            // Excerpted text that triggered the warning
+            const excerpt = document.createElement('div');
+            excerpt.style.cssText = `
+                background-color: #f5f5f5;
+                padding: 10px;
+                border-radius: 4px;
+                margin-bottom: 15px;
+                font-size: 13px;
+                border-left: 3px solid #ccc;
+                max-height: 80px;
+                overflow-y: auto;
+            `;
+            
+            // Highlight the analyzed message
+            excerpt.textContent = text;
+            
+            // Proceed button
+            const proceedBtn = document.createElement('button');
+            proceedBtn.textContent = 'Proceed with Caution';
+            proceedBtn.style.cssText = `
+                background-color: #ff9800;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: bold;
+                width: 100%;
+            `;
+            proceedBtn.onclick = () => {
+                popup.style.animation = 'kls-fade-out 0.3s';
+                setTimeout(() => {
+                    if (popup.parentNode) {
+                        document.body.removeChild(popup);
+                    }
+                }, 280);
+            };
+            
+            // Assemble content
+            content.appendChild(levelBadge);
+            content.appendChild(norm);
+            content.appendChild(excerpt);
+            content.appendChild(proceedBtn);
+            
+            // Assemble popup
+            popup.appendChild(header);
+            popup.appendChild(content);
+            
+            // Add to document
+            document.body.appendChild(popup);
+            
+            // Auto-close after 15 seconds
+            setTimeout(() => {
+                if (popup.parentNode) {
+                    popup.style.animation = 'kls-fade-out 0.3s';
+                    setTimeout(() => {
+                        if (popup.parentNode) {
+                            document.body.removeChild(popup);
+                        }
+                    }, 280);
+                }
+            }, 15000);
+        }
+        
+        /**
+         * Monitor a text input field for content changes
+         * @param {HTMLElement} element - The text input element to monitor
+         */
+        function monitorTextInput(element) {
+            if (!element || state.textBoxMonitors.has(element)) {
+                return; // Already monitoring this element
+            }
+            
+            // Function to handle input changes
+            const handleInput = async () => {
+                if (state.scanInProgress) return;
+                
+                // Minimal debounce to prevent API spam while being as responsive as possible
+                clearTimeout(state.scanDebounceTimer);
+                
+                state.scanDebounceTimer = setTimeout(async () => {
+                    const text = element.value || element.textContent || '';
+                    
+                    // No minimum character limit
+                    if (text.trim().length > 0) {
+                        state.scanInProgress = true;
+                        const result = await analyzeText(text, true);
+                        state.scanInProgress = false;
+                        
+                        if (result) {
+                            showWarningPopup(result, text);
+                        }
+                    }
+                }, 300); // Very short delay for responsiveness
+            };
+            
+            // Add event listeners for various input events
+            element.addEventListener('input', handleInput);
+            element.addEventListener('change', handleInput);
+            
+            // Store reference to event handler for cleanup
+            state.textBoxMonitors.set(element, handleInput);
+        }
+        
+        /**
+         * Scan the page for text input fields to monitor
+         */
+        function scanPageForTextInputs() {
+            // Query for common text input elements
+            const textInputs = [
+                ...document.querySelectorAll('textarea'),
+                ...document.querySelectorAll('input[type="text"]'),
+                ...document.querySelectorAll('[contenteditable="true"]'),
+                ...document.querySelectorAll('[role="textbox"]')
+            ];
+            
+            // Start monitoring each text input
+            textInputs.forEach(input => {
+                monitorTextInput(input);
+            });
+            
+            console.log(`KLS Advisor: Monitoring ${textInputs.length} text inputs`);
+        }
+        
+        /**
+         * Initialize automatic scanning of text inputs
+         */
+        function initAutoScan() {
+            if (!state.isInitialized) return;
+            
+            console.log('KLS Advisor: Initializing automatic text scanning');
+            
+            // Scan for existing text inputs
+            scanPageForTextInputs();
+            
+            // Set up mutation observer to detect new text inputs
+            const observer = new MutationObserver((mutations) => {
+                let shouldRescan = false;
+                
+                mutations.forEach(mutation => {
+                    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                        shouldRescan = true;
+                    }
+                });
+                
+                if (shouldRescan) {
+                    scanPageForTextInputs();
+                }
+            });
+            
+            // Start observing the document with the configured parameters
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        }
+        
         // Message handler setup
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.log('Content script received message:', message);
@@ -229,10 +547,15 @@ Include an analysis in JSON format at the end (which will be removed before show
                     state.apiEndpoint = message.endpoint;
                     state.isInitialized = true;
                     console.log('API initialized successfully');
+                    
+                    // Initialize automatic scanning
+                    setTimeout(initAutoScan, 1000); // Slight delay to ensure page is loaded
                 }
                 sendResponse({status: 'initialized'});
                 return true;
             }
+            
+            // Auto-scan feature is always enabled, no toggle needed
             
             // Handle chat message
             if (message.type === 'chat') {
@@ -273,7 +596,7 @@ Include an analysis in JSON format at the end (which will be removed before show
             return false;
         });
         
-        // Public API (empty to prevent external manipulation)
+        // Public API for extension pages (empty to prevent external manipulation)
         return {};
     })();
     
