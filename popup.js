@@ -475,7 +475,16 @@ ALWAYS maintain context of the entire conversation. If a student refers to a pre
             });
             
             const data = await response.json();
+            console.log('API Response:', data);
+            
+            // Check if there's an error in the response
+            if (data.error) {
+                console.error('OpenAI API Error:', data.error);
+                throw new Error(`API Error: ${data.error.message || 'Unknown error'}`);
+            }
+            
             if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+                console.error('Invalid API response structure:', data);
                 throw new Error('Invalid response from API');
             }
             
