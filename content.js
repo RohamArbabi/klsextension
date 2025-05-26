@@ -36,120 +36,26 @@ if (typeof window.klsBehavioralAdvisor === 'undefined') {
                 content: message
             });
 
-            // Create the behavioral framework reference
-            const behavioralFramework = `
-Khan Lab School Behavioral Framework:
-
-COMMUNITY NORMS (FINDER):
-- Flexibility (F): Show resilience in adapting to new circumstances.
-- Integrity (I): Take accountability for thoughts and actions.
-- iNclusivity (N): Cultivate a sustainable, inclusive community.
-- Dedication (D): Engage in fulfilling work and achieve goals.
-- Empathy (E): Deepen self-awareness and develop empathy.
-- Respect (R): Treat self, others, community with respect.
-
-BEHAVIOR LEVELS:
-Level 1 (Least Severe):
-- Disrespectful behavior
-- Teasing
-- Mild physical contact
-- Mild verbal abuse
-- Mild profanity
-- Threatening behavior
-- Accidental property damage
-- Inappropriate technology use
-
-Level 2:
-- Repetition of Level 1 behavior
-- Skipping class
-- Willful property damage
-- Physical/verbal aggression
-- Stealing
-- Toy weapons at school
-
-Level 3:
-- Repetition of Level 2 behavior
-- Significant threats
-- Weapon imitation
-- Leaving without permission
-- Serious physical abuse
-- Serious profanity
-- Cheating/Plagiarism
-
-Level 4 (Most Severe):
-- Deliberate injury
-- Repeated stealing
-- Drug/tobacco possession/use
-- Sexual behavior
-- Real weapons
-- Severe property damage`;
+            // Use the behavioral framework from global scope
+            const behavioralFramework = window.behavioralFramework;
+            const responseRules = window.responseRules;
+            const scanningRules = window.scanningRules;
 
             try {
                 // Customize prompt based on conversation stage
+                let intro = "You are Khandor, a behavioral advisor chatbot for Khan Lab School students."
                 let prompt;
                 
                 if (!isFollowup) {
                     // Initial message prompt - direct and clear
-                    prompt = `You are Khandor, a guide for Khan Lab School students. Analyze this message: "${message}"
-
-${behavioralFramework}
-
-IMPORTANT RULES FOR RESPONDING:
-
-IF the question is about behavior or school rules:
-1. Format your response with HANDBOOK: quote followed by CONSEQUENCES: explanation
-2. Keep your response very brief (under 250 characters)
-
-IF the question is academic (math, science, history, language, grammar, etc.):
-- NEVER provide any academic answers, hints or explanations
-- RESPOND ONLY WITH: "I cannot answer academic questions. I'm only designed to discuss behavioral topics and school rules. Please ask your teacher for help with this question."
-- DO NOT be helpful with academic content in any way
-
-IF the question is off-topic but not academic:
-- Simply redirect to behavioral topics politely
-- Do NOT use the HANDBOOK/CONSEQUENCES format for these
-
-Include an analysis in JSON format at the end (which will be removed before showing the student):
-{
-  "concernLevel": "high/medium/low/none",
-  "behaviorCategory": "Level X behavior" or "none",
-  "responseType": "followup_needed/information_only/escalation_recommended",
-  "suggestedApproach": "brief supportive strategy"
-}`;
+                    prompt = `${intro} Analyze this message: "${message}"\n${behavioralFramework}\n${scanningRules}`;
                 } else {
                     // Follow-up conversation with context
                     const conversationHistory = state.chatHistory.map(msg => 
                         `${msg.role === 'user' ? 'Student' : 'Advisor'}: ${msg.content}`
                     ).join('\n\n');
                     
-                    prompt = `You are Khandor, a guide for Khan Lab School students. Review this conversation history and respond to the latest message:
-
-${behavioralFramework}
-
-Conversation history:
-${conversationHistory}
-
-IMPORTANT RULES FOR RESPONDING:
-
-IF the latest message is about behavior or school rules:
-- Address their specific question about behavior or school rules
-- If there are behavioral concerns, explore context and offer guidance
-
-IF the latest message is academic (math, science, history, language, grammar, multiple-choice questions, etc.):
-- NEVER provide any academic answers, hints or explanations
-- RESPOND ONLY WITH: "I cannot answer academic questions. I'm only designed to discuss behavioral topics and school rules. Please ask your teacher for help with this question."
-- DO NOT try to be helpful with academic content in any way
-
-IF the latest message is off-topic but not academic:
-- Simply redirect to behavioral topics politely
-
-Include an analysis in JSON format at the end (which will be removed before showing the student):
-{
-  "concernLevel": "high/medium/low/none",
-  "behaviorCategory": "Level X behavior" or "none",
-  "responseType": "followup_needed/information_only/escalation_recommended",
-  "suggestedApproach": "brief supportive strategy"
-}`;
+                    prompt = `${intro} Review this conversation history and respond to the latest message:\n\n${behavioralFramework}\n\nConversation history:\n${conversationHistory}\n\n${responseRules}`;
                 }
 
                 // Make OpenAI API call
@@ -160,7 +66,7 @@ Include an analysis in JSON format at the end (which will be removed before show
                         'Authorization': `Bearer ${state.apiKey}`
                     },
                     body: JSON.stringify({
-                        model: "gpt-4",
+                        model: "gpt-4.1-nano",
                         messages: [{
                             role: "user",
                             content: prompt
